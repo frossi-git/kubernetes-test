@@ -24,44 +24,27 @@ sudo /vagrant/join.sh
 echo 'Environment="KUBELET_EXTRA_ARGS=--node-ip=192.168.30.#{i + 11}"' | sudo tee -a /etc/systemd/system/kubelet.service.d/10-kubeadm.conf
 sudo systemctl daemon-reload
 sudo systemctl restart kubelet
-
 SHELL
     end
   end
 
   config.vm.provision "shell", inline: $install_multicast
-
-  #config.trigger.after [:provision, :up, :reload] do
-  #  system('echo "
-  #    rdr pass on lo0 inet proto tcp from any to 127.0.0.1 port 6443 -> 127.0.0.1 port 56443
-  #    " | sudo pfctl -ef - > /dev/null 2>&1; echo "==> Fowarding Ports: 6443 -> 56443 & Enabling pf"')  
-  #end
-
-  #config.trigger.after [:halt, :destroy] do
-  #  system("sudo pfctl -df /etc/pf.conf > /dev/null 2>&1; echo '==> Removing Port Forwarding & Disabling pf'")
-  #end
-
 end
 
 
 $install_common_tools = <<-SCRIPT
-# bridged traffic to iptables is enabled for kube-router.
 
 # disable swap
 swapoff -a
 sed -i '/swap/d' /etc/fstab
 
-sudo apt-get install -y iptables arptables ebtables
-sudo update-alternatives --set iptables /usr/sbin/iptables-legacy
-sudo update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
-sudo update-alternatives --set arptables /usr/sbin/arptables-legacy
-sudo update-alternatives --set ebtables /usr/sbin/ebtables-legacy
+apt-get -qq update && apt-get -qq upgrade -y
 
 export DEBIAN_FRONTEND=noninteractive
 # Install Docker CE
 ## Set up the repository:
 ### Install packages to allow apt to use a repository over HTTPS
-apt-get update && apt-get install -y \
+apt-get -qq update && apt-get -qq install -y \
   apt-transport-https ca-certificates curl software-properties-common gnupg2
 
 ### Add Docker’s official GPG key
@@ -74,7 +57,7 @@ add-apt-repository \
   stable"
 
 ## Install Docker CE.
-apt-get update && apt-get install -y \
+apt-get -qq update && apt-get -qq install -y \
   containerd.io=1.2.10-3 \
   docker-ce=5:19.03.4~3-0~ubuntu-$(lsb_release -cs) \
   docker-ce-cli=5:19.03.4~3-0~ubuntu-$(lsb_release -cs)
@@ -98,13 +81,13 @@ systemctl daemon-reload
 systemctl restart docker
 
 # Install kubeadm
-sudo apt-get update && sudo apt-get install -y apt-transport-https curl
+sudo apt-get -qq update && sudo apt-get -qq install -y apt-transport-https curl
 curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key add -
 cat <<EOF | sudo tee /etc/apt/sources.list.d/kubernetes.list
 deb https://apt.kubernetes.io/ kubernetes-xenial main
 EOF
-sudo apt-get update
-sudo apt-get install -y kubelet kubeadm kubectl
+sudo apt-get -qq update
+sudo apt-get -qq install -y kubelet kubeadm kubectl
 sudo apt-mark hold kubelet kubeadm kubectl
 
 echo "192.168.30.10 kubeclusterendpoint" >> /etc/hosts
@@ -114,9 +97,11 @@ $provision_master_node = <<-SHELL
 OUTPUT_FILE=/vagrant/join.sh
 rm -rf $OUTPUT_FILE
 
+# Start cluster
 sudo kubeadm init --pod-network-cidr=192.168.0.0/16 --control-plane-endpoint=kubeclusterendpoint --apiserver-advertise-address=192.168.30.10 | grep -A 1 "kubeadm join" | tail -n 2 > ${OUTPUT_FILE}
 chmod +x $OUTPUT_FILE
 
+# Configure kubectl
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
@@ -125,7 +110,6 @@ kubectl apply -f https://docs.projectcalico.org/v3.11/manifests/calico.yaml
 
 sudo systemctl daemon-reload
 sudo systemctl restart kubelet
-
 SHELL
 
 $install_multicast = <<-SHELL
