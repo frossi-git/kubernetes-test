@@ -9,3 +9,9 @@ Just:
 ```bash
 vagrant up
 ```
+
+Destroy with:
+
+```bash
+vagrant destroy -f
+```
